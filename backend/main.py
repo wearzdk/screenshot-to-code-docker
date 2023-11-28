@@ -1,21 +1,22 @@
 # Load environment variables first
+import sys
+from fastapi.staticfiles import StaticFiles
+from routes import screenshot
+from prompts import assemble_prompt
+from image_generation import create_alt_url_mapping, generate_images
+from mock import mock_completion
+from llm import stream_openai_response
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, WebSocket
+from datetime import datetime
+import traceback
+import os
+import json
 from dotenv import load_dotenv
 from pydantic import BaseModel
 
 load_dotenv()
 
-
-import json
-import os
-import traceback
-from datetime import datetime
-from fastapi import FastAPI, WebSocket
-from fastapi.middleware.cors import CORSMiddleware
-from llm import stream_openai_response
-from mock import mock_completion
-from image_generation import create_alt_url_mapping, generate_images
-from prompts import assemble_prompt
-from routes import screenshot
 
 app = FastAPI(openapi_url=None, docs_url=None, redoc_url=None)
 
@@ -37,6 +38,10 @@ app.add_middleware(
 SHOULD_MOCK_AI_RESPONSE = bool(os.environ.get("MOCK", False))
 
 
+# Web UI
+if os.path.exists("static"):
+    app.mount("/webui", StaticFiles(directory="static", html=True), name="webui")
+
 app.include_router(screenshot.router)
 
 
@@ -52,11 +57,13 @@ def write_logs(prompt_messages, completion):
     print("Writing to logs directory:", logs_directory)
 
     # Generate a unique filename using the current timestamp within the logs directory
-    filename = datetime.now().strftime(f"{logs_directory}/messages_%Y%m%d_%H%M%S.json")
+    filename = datetime.now().strftime(
+        f"{logs_directory}/messages_%Y%m%d_%H%M%S.json")
 
     # Write the messages dict into a new file for each run
     with open(filename, "w") as f:
-        f.write(json.dumps({"prompt": prompt_messages, "completion": completion}))
+        f.write(json.dumps(
+            {"prompt": prompt_messages, "completion": completion}))
 
 
 @app.websocket("/generate-code")
@@ -102,7 +109,8 @@ async def stream_code(websocket: WebSocket):
         await websocket.send_json({"type": "chunk", "value": content})
 
     if params.get("resultImage") and params["resultImage"]:
-        prompt_messages = assemble_prompt(params["image"], params["resultImage"])
+        prompt_messages = assemble_prompt(
+            params["image"], params["resultImage"])
     else:
         prompt_messages = assemble_prompt(params["image"])
 
@@ -114,7 +122,8 @@ async def stream_code(websocket: WebSocket):
         # TODO: Move this to frontend
         for index, text in enumerate(params["history"]):
             prompt_messages += [
-                {"role": "assistant" if index % 2 == 0 else "user", "content": text}
+                {"role": "assistant" if index %
+                    2 == 0 else "user", "content": text}
             ]
 
         image_cache = create_alt_url_mapping(params["history"][-2])
@@ -153,3 +162,13 @@ async def stream_code(websocket: WebSocket):
         )
     finally:
         await websocket.close()
+
+
+def start_server():
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0",
+                port=8000, log_level="info", reload=False)
+
+
+if __name__ == "__main__":
+    start_server()
