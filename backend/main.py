@@ -1,9 +1,4 @@
 # Load environment variables first
-from dotenv import load_dotenv
-
-load_dotenv()
-
-
 import json
 import os
 import traceback
@@ -18,6 +13,8 @@ from image_generation import create_alt_url_mapping, generate_images
 from prompts import assemble_prompt
 from routes import screenshot
 from access_token import validate_access_token
+
+load_dotenv()
 
 app = FastAPI(openapi_url=None, docs_url=None, redoc_url=None)
 
@@ -41,6 +38,10 @@ SHOULD_MOCK_AI_RESPONSE = bool(os.environ.get("MOCK", False))
 IS_PROD = os.environ.get("IS_PROD", False)
 
 
+# Web UI
+if os.path.exists("static"):
+    app.mount("/webui", StaticFiles(directory="static", html=True), name="webui")
+
 app.include_router(screenshot.router)
 
 
@@ -63,11 +64,13 @@ def write_logs(prompt_messages, completion):
     print("Writing to logs directory:", logs_directory)
 
     # Generate a unique filename using the current timestamp within the logs directory
-    filename = datetime.now().strftime(f"{logs_directory}/messages_%Y%m%d_%H%M%S.json")
+    filename = datetime.now().strftime(
+        f"{logs_directory}/messages_%Y%m%d_%H%M%S.json")
 
     # Write the messages dict into a new file for each run
     with open(filename, "w") as f:
-        f.write(json.dumps({"prompt": prompt_messages, "completion": completion}))
+        f.write(json.dumps(
+            {"prompt": prompt_messages, "completion": completion}))
 
 
 @app.websocket("/generate-code")
@@ -152,8 +155,7 @@ async def stream_code(websocket: WebSocket):
     await websocket.send_json({"type": "status", "value": "Generating code..."})
 
     async def process_chunk(content):
-        await websocket.send_json({"type": "chunk", "value": content})
-
+        await websocket.send_js
     # Assemble the prompt
     try:
         if params.get("resultImage") and params["resultImage"]:
@@ -180,7 +182,8 @@ async def stream_code(websocket: WebSocket):
         # TODO: Move this to frontend
         for index, text in enumerate(params["history"]):
             prompt_messages += [
-                {"role": "assistant" if index % 2 == 0 else "user", "content": text}
+                {"role": "assistant" if index %
+                    2 == 0 else "user", "content": text}
             ]
 
         image_cache = create_alt_url_mapping(params["history"][-2])
@@ -256,5 +259,4 @@ async def stream_code(websocket: WebSocket):
         await websocket.send_json(
             {"type": "status", "value": "Image generation failed but code is complete."}
         )
-
     await websocket.close()
